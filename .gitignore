@@ -1,0 +1,16 @@
+/*.env
+
+/.envs/.production/*
+!/.envs/.production/.gitkeep
+/.envs/.local/*
+!/.envs/.local/.gitkeep
+
+saasServer
+saasWebClient
+
+/volumes/postgres_data/*
+/volumes/redis_data/*
+/volumes/server_media/*
+/volumes/server_static/*
+/volumes/webclient_browser_dist/*
+

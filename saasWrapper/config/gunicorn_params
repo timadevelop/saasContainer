@@ -1,0 +1,6 @@
+# we don't want nginx trying to do something clever with
+# redirects, we set the Host: header above already.
+# see: https://docs.gunicorn.org/en/stable/deploy.html
+proxy_redirect off;
+proxy_set_header Upgrade $http_upgrade;
+proxy_set_header Connection "Upgrade";

@@ -1,0 +1,112 @@
+version: "3"
+
+networks:
+  local:
+    driver: overlay
+    driver_opts:
+      encrypted: "true"
+
+
+services:
+  # memcached
+  memcached:
+    image: memcached:latest
+    # ports:
+    #     - "////:11211"
+    restart: on-failure:5
+    networks:
+      - local
+
+  redis:
+    command: ["redis-server", "--appendonly", "yes"]
+    image: redis:latest
+    hostname: redis
+    restart: on-failure:5
+    command: redis-server /usr/local/etc/redis/redis.conf
+    volumes:
+      - ./.envs/.production/redis.conf:/usr/local/etc/redis/redis.conf
+      - ./volumes/redis_data:/data
+    networks:
+      - local
+  # saas api container
+  api:
+    env_file:
+      - "./.env"
+      - "./.envs/.production/.common.internal.env"
+      - './.envs/.production/.api.env'
+    build:
+      context: ./saasServer/
+      dockerfile: Dockerfile
+      args:
+        ENV: ${ENV}
+        PORT: ${API_INTERNAL_PORT}
+    image: saascontainerization_api
+    command: ["./run.sh"]
+    volumes:
+      - ./saasServer:/usr/src/app:rw
+      - ./volumes/server_media:/usr/src/app/saasrest/media:rw
+      - ./volumes/server_static:/usr/src/app/saasrest/collected_static:rw
+      - ./wait-for:/scripts/wait-for
+    deploy:
+      replicas: 1
+    depends_on:
+      - memcached
+    restart: on-failure:0
+    networks:
+      - local
+
+  # saas web client
+  webclient:
+    image: saascontainerization_webclient
+    deploy:
+      replicas: 1
+    env_file:
+      - "./.env"
+      - "./.envs/.production/.webclient.env"
+    build:
+      context: ./saasWebClient/
+      dockerfile: Dockerfile
+      args:
+        ENV: ${ENV}
+        # PORT: 4200 by default
+    # environment:
+    #   PORT: 4200 by default
+    volumes:
+      - ./saasWebClient:/usr/src/app:rw
+      - ./volumes/webclient_browser_dist:/usr/src/app/dist:rw
+    depends_on:
+      - api
+    restart: on-failure:5
+    networks:
+      - local
+
+  # nginx wrapper
+  wrapper:
+    env_file:
+      - "./.env"
+      - "./.envs/.production/.wrapper.env"
+    image: saascontainerization_wrapper
+    command: ["/scripts/wait-for", "tasks.api:80", "--", "/scripts/wait-for", "tasks.webclient:4200", "--", "./run.sh"]
+    volumes:
+      - ./volumes/server_media:/data/server_media:ro
+      - ./volumes/server_static/:/data/server_static:ro
+      - ./volumes/webclient_browser_dist:/data/webclient_dist:ro
+      - ./wait-for:/scripts/wait-for
+    deploy:
+      replicas: 1
+    build:
+      context: ./saasWrapper/
+      dockerfile: Dockerfile
+    environment:
+      WEBCLIENT_HOST: webclient
+      WEBCLIENT_PORT: 4200
+      API_HOST: api
+      API_PORT: 80
+    ports:
+      - "${WRAPPER_PUBLIC_PORT}:80"
+    restart: on-failure:5
+    networks:
+      - local
+    depends_on:
+      - api
+      - webclient
